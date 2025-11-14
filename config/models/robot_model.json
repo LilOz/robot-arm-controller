@@ -1,0 +1,55 @@
+{
+  "name": "simple_robot_arm",
+  "links": [
+    {
+      "name": "base_link",
+      "length": 0.1,
+      "initial_angle_deg": 0,
+      "axis": "Z",
+      "limits_deg": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "shoulder_link",
+      "length": 0.3,
+      "initial_angle_deg": 0,
+      "axis": "Y",
+      "limits_deg": [
+        -180,
+        180
+      ]
+    },
+    {
+      "name": "elbow_link",
+      "length": 0.25,
+      "initial_angle_deg": 0,
+      "axis": "Y",
+      "limits_deg": [
+        -180,
+        180
+      ]
+    },
+    {
+      "name": "wrist_link",
+      "length": 0.05,
+      "initial_angle_deg": 0,
+      "axis": "Y",
+      "limits_deg": [
+        -180,
+        180
+      ]
+    },
+    {
+      "name": "end_effector_link",
+      "length": 0.05,
+      "initial_angle_deg": 0,
+      "axis": "Z",
+      "limits_deg": [
+        0,
+        0
+      ]
+    }
+  ]
+}

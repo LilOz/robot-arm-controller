@@ -1,0 +1,17 @@
+BasedOnStyle: LLVM
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+ColumnLimit: 100
+
+# Pointer/reference alignment
+PointerAlignment: Left   # "int* x" instead of "int *x"
+ReferenceAlignment: Left
+
+# Some nice defaults
+SpaceAfterCStyleCast: true
+AlignConsecutiveDeclarations: true
+AllowShortFunctionsOnASingleLine: Empty
+SortIncludes: false
+BreakBeforeBraces: Allman
+
