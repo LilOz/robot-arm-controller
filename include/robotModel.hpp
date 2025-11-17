@@ -1,9 +1,9 @@
 #pragma once
 
-#include <cmath>
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <Eigen/Dense>
 
 namespace robot
 {
@@ -11,27 +11,6 @@ inline double degreesToRadians(const double degrees)
 {
   constexpr double pi_over_180 = M_PI / 180.0;
   return degrees * pi_over_180;
-}
-
-enum class RotationAxis
-{
-  X,
-  Y,
-  Z
-};
-
-inline std::string rotationAxisToString(RotationAxis axis)
-{
-  switch (axis)
-  {
-  case RotationAxis::X:
-    return "X";
-  case RotationAxis::Y:
-    return "Y";
-  case RotationAxis::Z:
-    return "Z";
-  }
-  return "Unknown";
 }
 
 struct RotationLimits
@@ -42,10 +21,10 @@ struct RotationLimits
 
 struct Link
 {
-  Link(const std::string& name_, double length_,  RotationAxis axis_, double initial_angle_ = 0.0)
+  Link(const std::string& name_, double length_, Eigen::Vector3d axis_, double initial_angle_ = 0.0)
       : name(name_), length(length_), angle(initial_angle_), axis(axis_)
   {
-    if (length_ <= 0.0)
+    if (length_ < 0.0)
     {
       throw std::invalid_argument("Link length must be positive.");
     }
@@ -66,17 +45,18 @@ struct Link
     setAngle(angle + delta_rad);
   }
 
-  std::string    name;
-  double         length;
-  RotationLimits rotation_limits{0.0, 0.0}; // in radians
-  double         angle;
-  RotationAxis   axis;
+  std::string     name;
+  double          length;
+  RotationLimits  rotation_limits{0.0, 0.0}; // in radians
+  double          angle;
+  Eigen::Vector3d axis; // should be one of the unit vectors
 };
 
 struct Robot
 {
   std::string       name;
   std::vector<Link> links;
+  double            totalLength = 0.0;
 
   bool loadFromJson(const std::string& filename);
 };

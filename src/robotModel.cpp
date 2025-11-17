@@ -41,6 +41,7 @@ bool Robot::loadFromJson(const std::string& filename)
 
   const auto& jlinks = data["links"];
   links.reserve(jlinks.size());
+  double total_length = 0.0;
 
   for (size_t i = 0; i < jlinks.size(); ++i)
   {
@@ -54,15 +55,15 @@ bool Robot::loadFromJson(const std::string& filename)
     double initial_angle_rad = degreesToRadians(jl.value("initial_angle_deg", 0.0));
 
     // Axis
-    std::string  axis_str = jl["axis"];
-    RotationAxis axis;
+    std::string     axis_str = jl["axis"];
+    Eigen::Vector3d axis;
 
     if (axis_str == "X")
-      axis = RotationAxis::X;
+      axis = Eigen::Vector3d::UnitX();
     else if (axis_str == "Y")
-      axis = RotationAxis::Y;
+      axis = Eigen::Vector3d::UnitY();
     else if (axis_str == "Z")
-      axis = RotationAxis::Z;
+      axis = Eigen::Vector3d::UnitZ();
     else
     {
       std::cerr << "Warning: Unknown axis '" << axis_str << "' for link '" << link_name
@@ -72,6 +73,7 @@ bool Robot::loadFromJson(const std::string& filename)
 
     // Create link
     links.emplace_back(link_name, length, axis, initial_angle_rad);
+    total_length += length;
 
     // Rotation limits (deg → rad)
     auto limits_deg = jl["limits_deg"].get<std::array<double, 2>>();
@@ -90,6 +92,7 @@ bool Robot::loadFromJson(const std::string& filename)
 
   std::cout << "Loaded robot model: " << name << " with " << links.size() << " links.\n";
 
+  totalLength = total_length;
   return true;
 }
 

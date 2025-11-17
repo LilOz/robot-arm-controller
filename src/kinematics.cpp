@@ -1,66 +1,151 @@
 #include "kinematics.hpp"
-#include <Eigen/Dense>
-#include <iomanip>
 #include "robotModel.hpp"
 #include <fstream>
+#include <iomanip>
+#include <limits>
 
 namespace robot
 {
 
 // Rotation matrix for an axis + angle (radians)
-inline Eigen::Matrix3d rotationMatrix(RotationAxis axis, double angle)
+inline auto rotationMatrix(Eigen::Vector3d axis, double angle)
 {
+  auto u = axis.normalized();
+
+  double x = u.x();
+  double y = u.y();
+  double z = u.z();
+
   double c = std::cos(angle);
   double s = std::sin(angle);
 
-  switch (axis)
-  {
-  case RotationAxis::X:
-    return (Eigen::Matrix3d() << 1, 0, 0, 0, c, -s, 0, s, c).finished();
+  double one_c = 1.0 - c;
 
-  case RotationAxis::Y:
-    return (Eigen::Matrix3d() << c, 0, s, 0, 1, 0, -s, 0, c).finished();
+  Eigen::Matrix3d R;
+  R << c + x * x * one_c, x * y * one_c - z * s, x * z * one_c + y * s, y * x * one_c + z * s,
+      c + y * y * one_c, y * z * one_c - x * s, z * x * one_c - y * s, z * y * one_c + x * s,
+      c + z * z * one_c;
 
-  case RotationAxis::Z:
-    return (Eigen::Matrix3d() << c, -s, 0, s, c, 0, 0, 0, 1).finished();
-  }
-
-  return Eigen::Matrix3d::Identity(); // fallback
+  return R;
 }
 
 // Composition of transforms: C = A ∘ B
+// T maps a point expressed in B's (child) frame to A's frame (parent)
 inline Transform operator*(const Transform& A, const Transform& B)
 {
   Transform C;
   C.R = A.R * B.R;
-  C.p = C.R * B.p + A.p; // C.R * B.p is B's translation in the world frame
-  return C;              // apply A then B
+  C.p = A.R * B.p + A.p;
+  return C;
 }
 
-// --------------------------
-// Forward Kinematics
-// --------------------------
+inline Transform linkTransform(const Link& link)
+{
+  Eigen::Matrix3d R = rotationMatrix(link.axis, link.angle);
+  // offset along this link's local Z, expressed in the *parent* frame
+  Eigen::Vector3d offsetLocal(0, 0, link.length);
+
+  auto p = R * offsetLocal;
+
+  return Transform{R, p};
+}
 
 Transform forwardKinematics(const Robot& robot)
 {
-  Transform T;
-  T.p = Eigen::Vector3d(0, 0, 0); // start at origin
+  Transform T; // identity: R = I, p = 0
 
   for (const auto& link : robot.links)
   {
-    // Rotation matrix for this joint
-    Eigen::Matrix3d R = rotationMatrix(link.axis, link.angle);
-
-    // Translation along this link (assumed along local Z axis)
-    Eigen::Vector3d p(0, 0, link.length);
-
-    Transform Ti{R, p};
-
-    // apply this link's transform
+    Transform Ti = linkTransform(link);
     T = T * Ti;
   }
 
-  return T; // end-effector transform in world frame
+  return T; // end-effector in base frame
+}
+
+std::vector<Transform> forwardKinematicsAll(const Robot& robot)
+{
+  std::vector<Transform> transforms;
+  transforms.reserve(robot.links.size() + 1);
+
+  Transform T;             // identity
+  transforms.push_back(T); // base frame
+
+  for (const auto& link : robot.links)
+  {
+    Transform Ti = linkTransform(link);
+    T = T * Ti;
+    transforms.push_back(T);
+  }
+
+  return transforms;
+}
+
+Eigen::MatrixXd computeJacobian(const Robot& robot)
+{
+  auto n = robot.links.size();
+
+  Eigen::MatrixXd J(3, n);
+
+  const auto       Ts = forwardKinematicsAll(robot);
+  const auto pe = Ts.back().p;
+
+  for (size_t i = 0; i < n; ++i)
+  {
+    const auto& Ti = Ts[i];
+
+    // world joint axis
+    Eigen::Vector3d zi = Ti.R * robot.links[i].axis;
+
+    // world joint position
+    Eigen::Vector3d pi = Ti.p;
+
+    // Jacobian column
+    J.col(i) = zi.cross(pe - pi);
+  }
+
+  return J;
+}
+
+Eigen::VectorXd ikStep(const Robot& robot, const Eigen::Vector3d& target, const Eigen::Vector3d& pe,
+                       const Eigen::Vector3d& error, double lambda)
+{
+
+  Eigen::MatrixXd J = computeJacobian(robot);
+
+  // Damped least squares
+  Eigen::MatrixXd JJt = J * J.transpose();
+  Eigen::Matrix3d lambdaI = lambda * lambda * Eigen::Matrix3d::Identity();
+
+  Eigen::VectorXd dq = J.transpose() * (JJt + lambdaI).inverse() * error;
+  return dq;
+}
+
+IKResult solveIK(Robot& robot, const Eigen::Vector3d& target, int iterations)
+{
+  if (target.norm() > robot.totalLength)
+    return IKResult::Unreachable;
+
+  double prevError = std::numeric_limits<double>::max();
+  for (int k = 0; k < iterations; ++k)
+  {
+    auto            pe = forwardKinematics(robot).p;
+    Eigen::Vector3d error = target - pe;
+
+    if (error.norm() > prevError * 1.05)
+      return IKResult::Diverged;
+    prevError = error.norm();
+
+    Eigen::VectorXd dq = ikStep(robot, target, pe, error, 0.1);
+
+    for (size_t i = 0; i < robot.links.size(); ++i)
+      robot.links[i].rotateBy(dq[i]);
+
+    if (error.norm() < 1e-4)
+      return IKResult::Success;
+  }
+
+  return IKResult::MaxIterationsExceeded;
 }
 
 void exportForwardKinematics(const Robot& robot, const std::string& filename)
@@ -79,19 +164,18 @@ void exportForwardKinematics(const Robot& robot, const std::string& filename)
 
   for (const auto& link : robot.links)
   {
-    Eigen::Matrix3d R = rotationMatrix(link.axis, link.angle);
-    Eigen::Vector3d p(0, 0, link.length);
-    Transform       Ti{R, p};
 
+    Transform Ti = linkTransform(link);
     T = T * Ti;
 
     // Write position and orientation (RPY)
     file << std::fixed << std::setprecision(6) << T.p.x() << "," << T.p.y() << "," << T.p.z();
-    auto RPY = R.eulerAngles(0, 1, 2) * 180 / M_PI;
+    auto RPY = T.R.eulerAngles(0, 1, 2) * 180 / M_PI;
     file << "," << RPY[0] << "," << RPY[1] << "," << RPY[2];
     file << "\n";
   }
 
   file.close();
 }
+
 } // namespace robot

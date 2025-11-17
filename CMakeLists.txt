@@ -17,9 +17,6 @@ file(GLOB_RECURSE SOURCES ${CMAKE_SOURCE_DIR}/src/*.cpp)
 # Create the executable
 add_executable(robot_arm ${SOURCES})
 
-# Copy config files to build dir for easy access
-file(COPY ${CMAKE_SOURCE_DIR}/config DESTINATION ${CMAKE_BINARY_DIR})
-
 # --------------------------
 # Fetch nlohmann::json
 # --------------------------
