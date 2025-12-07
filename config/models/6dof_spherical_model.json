@@ -1,0 +1,47 @@
+{
+  "name": "6dof_robot_arm",
+  "links": [
+    {
+      "name": "base_link",
+      "length": 0.1,
+      "initial_angle_deg": 0,
+      "axis": "Z",
+      "limits_deg": [-180, 180]
+    },
+    {
+      "name": "shoulder_link",
+      "length": 0.3,
+      "initial_angle_deg": -30,
+      "axis": "Y",
+      "limits_deg": [-90, 90]
+    },
+    {
+      "name": "elbow_link",
+      "length": 0.25,
+      "initial_angle_deg": 45,
+      "axis": "Y",
+      "limits_deg": [-170, 170]
+    },
+    {
+      "name": "forearm_link",
+      "length": 0.1,
+      "initial_angle_deg": 0,
+      "axis": "Y",
+      "limits_deg": [-170, 170]
+    },
+    {
+      "name": "wrist_link",
+      "length": 0,
+      "initial_angle_deg": 0,
+      "axis": "X",
+      "limits_deg": [-150, 150]
+    },
+    {
+      "name": "end_effector_link",
+      "length": 0,
+      "initial_angle_deg": 0,
+      "axis": "Z",
+      "limits_deg": [-180, 180]
+    }
+  ]
+}

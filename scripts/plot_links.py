@@ -6,18 +6,69 @@ import numpy as np
 
 def load_fk_csv(path):
     xs, ys, zs = [], [], []
+    rolls, pitches, yaws = [], [], []
+
     with open(path, "r") as f:
         reader = csv.DictReader(f)
         for row in reader:
             xs.append(float(row["x"]))
             ys.append(float(row["y"]))
             zs.append(float(row["z"]))
-    return np.array(xs), np.array(ys), np.array(zs)
+
+            # these are in degrees in your CSV
+            rolls.append(float(row["roll"]))
+            pitches.append(float(row["pitch"]))
+            yaws.append(float(row["yaw"]))
+
+    return (
+        np.array(xs),
+        np.array(ys),
+        np.array(zs),
+        np.array(rolls),
+        np.array(pitches),
+        np.array(yaws),
+    )
 
 
-def plot_robot(xs, ys, zs):
-    plt.figure()
-    
+def rpy_to_rot(roll, pitch, yaw):
+    """
+    roll, pitch, yaw in *radians*.
+    Match Eigen's eulerAngles(0,1,2), which corresponds to R = Rx * Ry * Rz.
+    """
+    cr, sr = np.cos(roll), np.sin(roll)
+    cp, sp = np.cos(pitch), np.sin(pitch)
+    cy, sy = np.cos(yaw), np.sin(yaw)
+
+    Rx = np.array(
+        [
+            [1, 0, 0],
+            [0, cr, -sr],
+            [0, sr, cr],
+        ]
+    )
+
+    Ry = np.array(
+        [
+            [cp, 0, sp],
+            [0, 1, 0],
+            [-sp, 0, cp],
+        ]
+    )
+
+    Rz = np.array(
+        [
+            [cy, -sy, 0],
+            [sy, cy, 0],
+            [0, 0, 1],
+        ]
+    )
+
+    # Eigen: R = Rx * Ry * Rz for eulerAngles(0,1,2)
+    return Rx @ Ry @ Rz
+
+
+def plot_robot(xs, ys, zs, rolls, pitches, yaws):
+    fig = plt.figure()
     ax = plt.axes(projection="3d")
 
     # Draw each link as its own line segment
@@ -45,10 +96,33 @@ def plot_robot(xs, ys, zs):
     ax.set_ylim(mid_y - max_range, mid_y + max_range)
     ax.set_zlim(mid_z - max_range, mid_z + max_range)
 
-    plt.title("Robot Forward Kinematics (Per-Link Colours)")
+    # --- END EFFECTOR ORIENTATION ARROW ---
+
+    roll = np.deg2rad(rolls[-1])
+    pitch = np.deg2rad(pitches[-1])
+    yaw = np.deg2rad(yaws[-1])
+
+    R = rpy_to_rot(roll, pitch, yaw)
+
+    # Choose an axis to draw. Common choice = local Z axis
+    direction = R[:, 2]  # world direction EE is pointing
+
+    ax.quiver(
+        xs[-1],
+        ys[-1],
+        zs[-1],
+        direction[0],
+        direction[1],
+        direction[2],
+        length=0.1,  # adjust scale
+        normalize=True,
+        color="red",
+    )
+
+    plt.title("Robot Forward Kinematics with EE Orientation Arrow")
     plt.show()
 
 
 if __name__ == "__main__":
-    xs, ys, zs = load_fk_csv("../build/forward_kinematics.csv")
-    plot_robot(xs, ys, zs)
+    xs, ys, zs, rolls, pitches, yaws = load_fk_csv("../build/forward_kinematics.csv")
+    plot_robot(xs, ys, zs, rolls, pitches, yaws)

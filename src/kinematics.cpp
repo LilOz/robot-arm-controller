@@ -50,6 +50,17 @@ inline Transform linkTransform(const Link& link)
   return Transform{R, p};
 }
 
+inline Eigen::Vector3d orientationError(const Eigen::Matrix3d& R_current,
+                                        const Eigen::Matrix3d& R_target)
+{
+  // Rotation that takes current -> target
+  Eigen::Matrix3d R_err = R_target * R_current.transpose();
+
+  Eigen::AngleAxisd aa(R_err);
+  // axis * angle: a 3D error vector
+  return aa.axis() * aa.angle();
+}
+
 Transform forwardKinematics(const Robot& robot)
 {
   Transform T; // identity: R = I, p = 0
@@ -87,7 +98,7 @@ Eigen::MatrixXd computeJacobian(const Robot& robot)
 
   Eigen::MatrixXd J(3, n);
 
-  const auto       Ts = forwardKinematicsAll(robot);
+  const auto Ts = forwardKinematicsAll(robot);
   const auto pe = Ts.back().p;
 
   for (size_t i = 0; i < n; ++i)
@@ -107,6 +118,37 @@ Eigen::MatrixXd computeJacobian(const Robot& robot)
   return J;
 }
 
+Eigen::MatrixXd computeJacobian6D(const Robot& robot)
+{
+  const auto      n = robot.links.size();
+  Eigen::MatrixXd J(6, n);
+
+  const auto Ts = forwardKinematicsAll(robot);
+  const auto pe = Ts.back().p; // end-effector position
+
+  for (size_t i = 0; i < n; ++i)
+  {
+    const auto& Ti = Ts[i];
+
+    // joint axis in world frame
+    Eigen::Vector3d zi = Ti.R * robot.links[i].axis;
+
+    // joint origin in world frame
+    Eigen::Vector3d pi = Ti.p;
+
+    // linear part: z_i × (p_e - p_i)
+    Eigen::Vector3d linear = zi.cross(pe - pi);
+
+    // angular part: just the axis direction for a revolute joint
+    Eigen::Vector3d angular = zi;
+
+    J.block<3, 1>(0, i) = linear;
+    J.block<3, 1>(3, i) = angular;
+  }
+
+  return J;
+}
+
 Eigen::VectorXd ikStep(const Robot& robot, const Eigen::Vector3d& target, const Eigen::Vector3d& pe,
                        const Eigen::Vector3d& error, double lambda)
 {
@@ -121,7 +163,25 @@ Eigen::VectorXd ikStep(const Robot& robot, const Eigen::Vector3d& target, const 
   return dq;
 }
 
-IKResult solveIK(Robot& robot, const Eigen::Vector3d& target, int iterations)
+Eigen::VectorXd ikStep6D(const Robot& robot, const Transform& current, const Transform& target,
+                         double lambda)
+{
+  Eigen::MatrixXd J = computeJacobian6D(robot);
+
+  // Build 6D error vector
+  Eigen::Matrix<double, 6, 1> e;
+  e.head<3>() = target.p - current.p;                  // position error
+  e.tail<3>() = orientationError(current.R, target.R); // orientation error
+
+  // Damped least squares in 6D
+  Eigen::MatrixXd             JJt = J * J.transpose();
+  Eigen::Matrix<double, 6, 6> lambdaI = lambda * lambda * Eigen::Matrix<double, 6, 6>::Identity();
+
+  Eigen::VectorXd dq = J.transpose() * (JJt + lambdaI).inverse() * e;
+  return dq;
+}
+
+IKResult solveIK(Robot& robot, const Eigen::Vector3d& target, int iterations, double lambda)
 {
   if (target.norm() > robot.totalLength)
     return IKResult::Unreachable;
@@ -136,13 +196,51 @@ IKResult solveIK(Robot& robot, const Eigen::Vector3d& target, int iterations)
       return IKResult::Diverged;
     prevError = error.norm();
 
-    Eigen::VectorXd dq = ikStep(robot, target, pe, error, 0.1);
+    Eigen::VectorXd dq = ikStep(robot, target, pe, error, lambda);
 
     for (size_t i = 0; i < robot.links.size(); ++i)
       robot.links[i].rotateBy(dq[i]);
 
     if (error.norm() < 1e-4)
       return IKResult::Success;
+  }
+
+  return IKResult::MaxIterationsExceeded;
+}
+
+IKResult solveIK6D(Robot& robot, const Transform& target, int iterations, double lambda)
+{
+  // quick reachability check on position only
+  if (target.p.norm() > robot.totalLength)
+    return IKResult::Unreachable;
+
+  double prevError = std::numeric_limits<double>::max();
+
+  for (int k = 0; k < iterations; ++k)
+  {
+    Transform current = forwardKinematics(robot);
+
+    Eigen::Matrix<double, 6, 1> e;
+    e.head<3>() = target.p - current.p;
+    e.tail<3>() = orientationError(current.R, target.R);
+
+    double norm = e.norm();
+
+    // convergence
+    if (norm < 1e-4)
+      return IKResult::Success;
+
+    // divergence
+    if (norm > prevError * 1.05)
+      return IKResult::Diverged;
+
+    prevError = norm;
+
+    Eigen::VectorXd dq = ikStep6D(robot, current, target, lambda); 
+
+    // apply joint updates
+    for (size_t i = 0; i < robot.links.size(); ++i)
+      robot.links[i].rotateBy(dq[i]);
   }
 
   return IKResult::MaxIterationsExceeded;
