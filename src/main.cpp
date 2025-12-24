@@ -1,4 +1,5 @@
 #include "kinematics.hpp"
+#include "trajectory.hpp"
 #include "robotModel.hpp"
 #include <iostream>
 
@@ -8,8 +9,8 @@ int main()
   myRobot.loadFromJson("config/models/6dof_spherical_model.json");
   robot::printRobot(myRobot);
 
-  std::cout << "Initial End-Effector Position: "
-            << robot::forwardKinematics(myRobot).p.transpose() << "\n";
+  std::cout << "Initial End-Effector Position: " << robot::forwardKinematics(myRobot).p.transpose()
+            << "\n";
   std::cout << "Initial End-Effector Rotation:\n"
             << robot::forwardKinematics(myRobot).R.eulerAngles(0, 1, 2) * 180 / M_PI << "\n";
 
@@ -41,7 +42,7 @@ int main()
   }
 
   // ----------------------------------------
-  // NEW: 6-DOF POSITION + ORIENTATION IK TESTS
+  // 6-DOF POSITION + ORIENTATION IK TESTS
   // ----------------------------------------
 
   std::cout << "\n==============================\n";
@@ -93,6 +94,28 @@ int main()
   }
 
   robot::exportForwardKinematics(myRobot, "forward_kinematics.csv");
+
+  // Example start and target transforms
+  robot::Transform Ts, Tt;
+  Ts.p = Eigen::Vector3d(0, 0, 0);
+  Ts.R = Eigen::Matrix3d::Identity();
+
+  Tt.p = Eigen::Vector3d(1, 1, 1);
+  Tt.R = Eigen::AngleAxisd(M_PI / 2, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+
+  double duration = 2.0; // seconds
+  int    steps = 10;
+
+  robot::Trajectory traj = generateLinearTrajectory(Ts, Tt, duration, steps);
+
+  // Print the generated waypoints
+  for (size_t i = 0; i < traj.waypoints.size(); ++i)
+  {
+    const robot::Waypoint& wp = traj.waypoints[i];
+    std::cout << "Waypoint " << i << ": position = [" << wp.eeTransform.p.transpose()
+              << "], timestamp = " << wp.timestamp.count() << " ms" << std::endl;
+  }
+  robot::exportTrajectory(traj, "trajectory.csv");
 
   return 0;
 }

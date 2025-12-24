@@ -7,8 +7,8 @@ namespace robot
 
 struct Waypoint
 {
-  std::chrono::time_point<std::chrono::steady_clock> timestamp;
-  Transform eeTransform;
+  std::chrono::milliseconds timestamp;
+  Transform                 eeTransform;
 };
 
 struct Trajectory
@@ -18,5 +18,7 @@ struct Trajectory
 
 Trajectory generateLinearTrajectory(const Transform& Ts, const Transform& Tt, double duration,
                                     int steps);
+
+void exportTrajectory(const Trajectory& traj, const std::string& path);
 
 } // namespace robot

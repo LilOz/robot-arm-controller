@@ -23,14 +23,14 @@ enum class IKResult
 };
 
 // Compute the end-effector position from the robot model
-Transform forwardKinematics(const Robot& robot);
+Transform forwardKinematics(const Robot&);
 
 // Compute the transforms of all joints/links in the robot
-IKResult solveIK(Robot& robot, const Eigen::Vector3d& target, int iterations = 50, double lambda = 0.1);
-IKResult solveIK6D(Robot& robot, const Transform& target, int iterations = 50, double lambda = 0.1);
+IKResult solveIK(Robot&, const Eigen::Vector3d&, int iterations = 50, double lambda = 0.1);
+IKResult solveIK6D(Robot&, const Transform&, int iterations = 50, double lambda = 0.1);
 
 // Compute joint angles to reach the desired end-effector position and set them in the robot model
-bool inverseKinematics(Robot& robot, const Eigen::Vector3d& desired_pos);
+bool inverseKinematics(Robot&, const Eigen::Vector3d&);
 
 void exportForwardKinematics(const Robot&, const std::string&);
 } // namespace robot
