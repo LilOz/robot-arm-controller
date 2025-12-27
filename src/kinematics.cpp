@@ -4,7 +4,7 @@
 #include <iomanip>
 #include <limits>
 
-namespace robot
+namespace robot::kinematics
 {
 
 // Rotation matrix for an axis + angle (radians)
@@ -39,7 +39,7 @@ inline Transform operator*(const Transform& A, const Transform& B)
   return C;
 }
 
-inline Transform linkTransform(const Link& link)
+inline Transform linkTransform(const model::Link& link)
 {
   Eigen::Matrix3d R = rotationMatrix(link.axis, link.angle);
   // offset along this link's local Z, expressed in the *parent* frame
@@ -61,7 +61,7 @@ inline Eigen::Vector3d orientationError(const Eigen::Matrix3d& R_current,
   return aa.axis() * aa.angle();
 }
 
-Transform forwardKinematics(const Robot& robot)
+Transform forwardKinematics(const model::Robot& robot)
 {
   Transform T; // identity: R = I, p = 0
 
@@ -74,7 +74,7 @@ Transform forwardKinematics(const Robot& robot)
   return T; // end-effector in base frame
 }
 
-std::vector<Transform> forwardKinematicsAll(const Robot& robot)
+std::vector<Transform> forwardKinematicsAll(const model::Robot& robot)
 {
   std::vector<Transform> transforms;
   transforms.reserve(robot.links.size() + 1);
@@ -92,7 +92,7 @@ std::vector<Transform> forwardKinematicsAll(const Robot& robot)
   return transforms;
 }
 
-Eigen::MatrixXd computeJacobian(const Robot& robot)
+Eigen::MatrixXd computeJacobian(const model::Robot& robot)
 {
   auto n = robot.links.size();
 
@@ -118,7 +118,7 @@ Eigen::MatrixXd computeJacobian(const Robot& robot)
   return J;
 }
 
-Eigen::MatrixXd computeJacobian6D(const Robot& robot)
+Eigen::MatrixXd computeJacobian6D(const model::Robot& robot)
 {
   const auto      n = robot.links.size();
   Eigen::MatrixXd J(6, n);
@@ -149,7 +149,7 @@ Eigen::MatrixXd computeJacobian6D(const Robot& robot)
   return J;
 }
 
-Eigen::VectorXd ikStep(const Robot& robot, const Eigen::Vector3d& target, const Eigen::Vector3d& pe,
+Eigen::VectorXd ikStep(const model::Robot& robot, const Eigen::Vector3d& target, const Eigen::Vector3d& pe,
                        const Eigen::Vector3d& error, double lambda)
 {
 
@@ -163,7 +163,7 @@ Eigen::VectorXd ikStep(const Robot& robot, const Eigen::Vector3d& target, const 
   return dq;
 }
 
-Eigen::VectorXd ikStep6D(const Robot& robot, const Transform& current, const Transform& target,
+Eigen::VectorXd ikStep6D(const model::Robot& robot, const Transform& current, const Transform& target,
                          double lambda)
 {
   Eigen::MatrixXd J = computeJacobian6D(robot);
@@ -181,7 +181,7 @@ Eigen::VectorXd ikStep6D(const Robot& robot, const Transform& current, const Tra
   return dq;
 }
 
-IKResult solveIK(Robot& robot, const Eigen::Vector3d& target, int iterations, double lambda)
+IKResult solveIK(model::Robot& robot, const Eigen::Vector3d& target, int iterations, double lambda)
 {
   if (target.norm() > robot.totalLength)
     return IKResult::Unreachable;
@@ -208,7 +208,7 @@ IKResult solveIK(Robot& robot, const Eigen::Vector3d& target, int iterations, do
   return IKResult::MaxIterationsExceeded;
 }
 
-IKResult solveIK6D(Robot& robot, const Transform& target, int iterations, double lambda)
+IKResult solveIK6D(model::Robot& robot, const Transform& target, int iterations, double lambda)
 {
   // quick reachability check on position only
   if (target.p.norm() > robot.totalLength)
@@ -246,7 +246,7 @@ IKResult solveIK6D(Robot& robot, const Transform& target, int iterations, double
   return IKResult::MaxIterationsExceeded;
 }
 
-void exportForwardKinematics(const Robot& robot, const std::string& filename)
+void exportForwardKinematics(const model::Robot& robot, const std::string& filename)
 {
   std::ofstream file(filename);
   if (!file.is_open())

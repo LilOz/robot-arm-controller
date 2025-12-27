@@ -6,7 +6,7 @@
 
 using json = nlohmann::json;
 
-namespace robot
+namespace robot::model
 {
 
 void printRobot(const Robot& r)

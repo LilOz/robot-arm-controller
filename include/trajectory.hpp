@@ -2,13 +2,13 @@
 
 #include "kinematics.hpp"
 #include <chrono>
-namespace robot
+namespace robot::trajectory
 {
 
 struct Waypoint
 {
   std::chrono::milliseconds timestamp;
-  Transform                 eeTransform;
+  kinematics::Transform     eeTransform;
 };
 
 struct Trajectory
@@ -16,9 +16,10 @@ struct Trajectory
   std::vector<Waypoint> waypoints;
 };
 
-Trajectory generateLinearTrajectory(const Transform& Ts, const Transform& Tt, double duration,
-                                    int steps);
+Trajectory generateLinearTrajectory(const kinematics::Transform& Ts,
+                                    const kinematics::Transform& Tt, double duration, int steps,
+                                    double accTime);
 
 void exportTrajectory(const Trajectory& traj, const std::string& path);
 
-} // namespace robot
+} // namespace robot::trajectory

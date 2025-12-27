@@ -5,7 +5,7 @@
 #include <vector>
 #include <Eigen/Dense>
 
-namespace robot
+namespace robot::model
 {
 inline double degreesToRadians(const double degrees)
 {
