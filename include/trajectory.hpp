@@ -16,9 +16,8 @@ struct Trajectory
   std::vector<Waypoint> waypoints;
 };
 
-Trajectory generateLinearTrajectory(const kinematics::Transform& Ts,
-                                    const kinematics::Transform& Tt, double duration, int steps,
-                                    double accTime);
+Trajectory generateCartesianSpline(const std::vector<kinematics::Transform>& targets,
+                                   double duration, int steps);
 
 void exportTrajectory(const Trajectory& traj, const std::string& path);
 

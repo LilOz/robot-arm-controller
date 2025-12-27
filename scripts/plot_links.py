@@ -124,5 +124,5 @@ def plot_robot(xs, ys, zs, rolls, pitches, yaws):
 
 
 if __name__ == "__main__":
-    xs, ys, zs, rolls, pitches, yaws = load_fk_csv("../build/forward_kinematics.csv")
+    xs, ys, zs, rolls, pitches, yaws = load_fk_csv("../build/examples/forward_kinematics.csv")
     plot_robot(xs, ys, zs, rolls, pitches, yaws)

@@ -1,89 +1,78 @@
 #include "trajectory.hpp"
 #include <fstream>
 
-struct AlphaState
-{
-  double alpha;   // ∈ [0, 1]
-  double alpha_d; // derivative
-};
-
-AlphaState trapezoidalAlpha(double t, double duration, double accTime)
-{
-  const double Tc = duration - 2.0 * accTime;
-  if (Tc < 0.0)
-    throw std::runtime_error("Invalid trapezoidal timing");
-
-  // Peak velocity so total area = 1
-  const double alpha_dot_max = 1.0 / (accTime + Tc);
-
-  AlphaState s{};
-
-  if (t <= 0.0)
-  {
-    s.alpha = 0.0;
-    s.alpha_d = 0.0;
-  }
-  else if (t < accTime)
-  {
-    // Acceleration phase
-    s.alpha_d = alpha_dot_max * (t / accTime);
-    s.alpha = 0.5 * alpha_dot_max * (t * t / accTime);
-  }
-  else if (t < accTime + Tc)
-  {
-    // Constant velocity
-    s.alpha_d = alpha_dot_max;
-    s.alpha = 0.5 * alpha_dot_max * accTime + alpha_dot_max * (t - accTime);
-  }
-  else if (t < duration)
-  {
-    // Deceleration phase
-    const double td = t - (accTime + Tc);
-    s.alpha_d = alpha_dot_max * (1.0 - td / accTime);
-    s.alpha = 1.0 - 0.5 * alpha_dot_max * ((duration - t) * (duration - t) / accTime);
-  }
-  else
-  {
-    s.alpha = 1.0;
-    s.alpha_d = 0.0;
-  }
-
-  return s;
-}
-
 namespace robot::trajectory
 {
-Trajectory generateLinearTrajectory(const kinematics::Transform& Ts,
-                                    const kinematics::Transform& Tt, double duration, int steps,
-                                    double accTime)
+Trajectory generateCartesianSpline(const std::vector<kinematics::Transform>& targets,
+                                   double duration, int steps)
 {
+  assert(targets.size() >= 2);
+
   Trajectory traj;
   traj.waypoints.reserve(steps + 1);
 
-  for (int i = 0; i <= steps; ++i)
+  const int    N = static_cast<int>(targets.size());
+  const double dt = duration / steps;
+
+  std::vector<Eigen::Vector3d>    P(N);
+  std::vector<Eigen::Quaterniond> Q(N);
+
+  for (int i = 0; i < N; ++i)
   {
-    double t = (static_cast<double>(i) / steps) * duration;
-    auto   s = trapezoidalAlpha(t, duration, accTime);
-    double alpha = s.alpha;
+    P[i] = targets[i].p;
+    Q[i] = Eigen::Quaterniond(targets[i].R).normalized();
+  }
 
-    // Interpolate position
-    Eigen::Vector3d p = (1 - alpha) * Ts.p + alpha * Tt.p;
+  // Enforce hemisphere consistency globally
+  for (int i = 1; i < N; ++i)
+  {
+    if (Q[i - 1].dot(Q[i]) < 0.0)
+      Q[i].coeffs() *= -1.0;
+  }
 
-    // Interpolate rotation using Slerp
-    Eigen::Quaterniond q_start(Ts.R);
-    Eigen::Quaterniond q_target(Tt.R);
-    Eigen::Quaterniond q_interp = q_start.slerp(alpha, q_target);
-    Eigen::Matrix3d    R = q_interp.toRotationMatrix();
+  const int segmentCount = N - 1;
+  const int baseSteps = steps / segmentCount;
+  const int remainder = steps % segmentCount;
 
-    kinematics::Transform T;
-    T.p = p;
-    T.R = R;
+  int stepIdx = 0;
 
-    Waypoint wp;
-    wp.timestamp = std::chrono::milliseconds(static_cast<int>(alpha * duration * 1000));
-    wp.eeTransform = T;
+  for (int s = 0; s < segmentCount; ++s)
+  {
+    const int stepsThisSegment = baseSteps + (s == segmentCount - 1 ? remainder : 0);
 
-    traj.waypoints.push_back(wp);
+    const auto& p1 = P[s];
+    const auto& p2 = P[s + 1];
+
+    const auto p0 = (s == 0) ? p1 - (p2 - p1) : P[s - 1];
+
+    const auto p3 = (s + 2 < N) ? P[s + 2] : p2 + (p2 - p1);
+
+    for (int i = 0; i <= stepsThisSegment; ++i)
+    {
+      if (s > 0 && i == 0)
+        continue;
+
+      double u = static_cast<double>(i) / stepsThisSegment;
+
+      // --- Position: Catmull–Rom ---
+      Eigen::Vector3d pos =
+          0.5 * ((2.0 * p1) + (-p0 + p2) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u * u +
+                 (-p0 + 3 * p1 - 3 * p2 + p3) * u * u * u);
+
+      // --- Orientation: SLERP ---
+      Eigen::Quaterniond rot = Q[s].slerp(u, Q[s + 1]);
+
+      kinematics::Transform T;
+      T.p = pos;
+      T.R = rot.toRotationMatrix();
+
+      Waypoint wp;
+      wp.timestamp = std::chrono::milliseconds(static_cast<int>(stepIdx * dt * 1000.0));
+      wp.eeTransform = T;
+
+      traj.waypoints.push_back(wp);
+      ++stepIdx;
+    }
   }
 
   return traj;
@@ -111,9 +100,6 @@ void exportTrajectory(const Trajectory& traj, const std::string& path)
     const Eigen::Vector3d& p = wp.eeTransform.p;
 
     Eigen::Quaterniond q(wp.eeTransform.R);
-    // (Optional) ensure a consistent sign to avoid visual discontinuities when plotting
-    if (q.w() < 0.0)
-      q.coeffs() *= -1.0;
 
     file << t_ms << ',' << p.x() << ',' << p.y() << ',' << p.z() << ',' << q.w() << ',' << q.x()
          << ',' << q.y() << ',' << q.z() << '\n';
