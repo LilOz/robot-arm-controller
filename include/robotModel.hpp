@@ -54,6 +54,14 @@ struct Link
 
 struct Robot
 {
+  explicit Robot(const std::string& filename)
+  {
+    if (!loadFromJson(filename))
+    {
+      throw std::runtime_error("Failed to load robot model from file: " + filename);
+    }
+  }
+
   std::string       name;
   std::vector<Link> links;
   double            totalLength = 0.0;
@@ -61,4 +69,4 @@ struct Robot
   bool loadFromJson(const std::string& filename);
 };
 void printRobot(const Robot& r);
-} // namespace robot
+} // namespace robot::model

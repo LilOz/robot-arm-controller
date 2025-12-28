@@ -10,36 +10,36 @@
     },
     {
       "name": "shoulder_link",
-      "length": 0.3,
+      "length": 0.35,
       "initial_angle_deg": -30,
       "axis": "Y",
       "limits_deg": [-90, 90]
     },
     {
       "name": "elbow_link",
-      "length": 0.25,
+      "length": 0.35,
       "initial_angle_deg": 45,
       "axis": "Y",
       "limits_deg": [-170, 170]
     },
     {
       "name": "forearm_link",
-      "length": 0.1,
-      "initial_angle_deg": 0,
-      "axis": "Y",
-      "limits_deg": [-170, 170]
+      "length": 0,
+      "initial_angle_deg": 10,
+      "axis": "Z",
+      "limits_deg": [-180, 180]
     },
     {
       "name": "wrist_link",
       "length": 0,
-      "initial_angle_deg": 0,
-      "axis": "X",
-      "limits_deg": [-150, 150]
+      "initial_angle_deg": 20,
+      "axis": "Y",
+      "limits_deg": [-180, 180]
     },
     {
       "name": "end_effector_link",
-      "length": 0,
-      "initial_angle_deg": 0,
+      "length": 0.1,
+      "initial_angle_deg": 30,
       "axis": "Z",
       "limits_deg": [-180, 180]
     }

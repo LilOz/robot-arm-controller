@@ -7,8 +7,7 @@ int main()
   using namespace robot::model;
   using namespace robot::kinematics;
 
-  Robot robot;
-  robot.loadFromJson("config/models/6dof_spherical_model.json");
+  Robot robot("config/models/6dof_spherical_model.json");
   printRobot(robot);
 
   auto T = forwardKinematics(robot);

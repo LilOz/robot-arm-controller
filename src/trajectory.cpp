@@ -90,11 +90,17 @@ TrajectoryJointSpace generateJointSpaceTrajectory(model::Robot&     robot,
 
   for (const auto& wp : cartesian_traj.waypoints)
   {
-    auto result = solveIK6D(robot, wp.eeTransform, 500);
+    auto result = solveIK(robot, wp.eeTransform, 500);
     if (result != IKResult::Success)
     {
       std::cerr << "generateJointSpaceTrajectory: IK failed for waypoint at t = "
-                << wp.timestamp.count() << " ms\n" << "Error code: " << static_cast<int>(result) << "\n";
+                << wp.timestamp.count() << " ms\n"
+                << "Error code: " << static_cast<int>(result) << "\n";
+
+      std::cerr << "Target position: " << wp.eeTransform.p.transpose() << "\n";
+
+      std::cerr << "Target RPY (deg): "
+                << (wp.eeTransform.R.eulerAngles(0, 1, 2) * 180.0 / M_PI).transpose() << "\n";
       throw std::runtime_error("generateJointSpaceTrajectory: IK failed for a waypoint");
     }
     std::vector<double> angles;

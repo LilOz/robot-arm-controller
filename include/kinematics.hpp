@@ -26,8 +26,7 @@ enum class IKResult
 Transform forwardKinematics(const model::Robot&);
 
 // Compute the transforms of all joints/links in the robot
-IKResult solveIK(model::Robot&, const Eigen::Vector3d&, int iterations = 50, double lambda = 0.1);
-IKResult solveIK6D(model::Robot&, const Transform&, int iterations = 50, double lambda = 0.1);
+IKResult solveIK(model::Robot&, const Transform&, int iterations = 50, double lambda = 0.1);
 
 // Compute joint angles to reach the desired end-effector position and set them in the robot model
 bool inverseKinematics(model::Robot&, const Eigen::Vector3d&);

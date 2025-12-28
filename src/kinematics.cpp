@@ -10,27 +10,10 @@ namespace robot::kinematics
 // Rotation matrix for an axis + angle (radians)
 inline auto rotationMatrix(Eigen::Vector3d axis, double angle)
 {
-  auto u = axis.normalized();
-
-  double x = u.x();
-  double y = u.y();
-  double z = u.z();
-
-  double c = std::cos(angle);
-  double s = std::sin(angle);
-
-  double one_c = 1.0 - c;
-
-  Eigen::Matrix3d R;
-  R << c + x * x * one_c, x * y * one_c - z * s, x * z * one_c + y * s, y * x * one_c + z * s,
-      c + y * y * one_c, y * z * one_c - x * s, z * x * one_c - y * s, z * y * one_c + x * s,
-      c + z * z * one_c;
-
-  return R;
+  return Eigen::AngleAxisd(angle, axis.normalized()).toRotationMatrix();
 }
 
 // Composition of transforms: C = A ∘ B
-// T maps a point expressed in B's (child) frame to A's frame (parent)
 inline Transform operator*(const Transform& A, const Transform& B)
 {
   Transform C;
@@ -42,36 +25,36 @@ inline Transform operator*(const Transform& A, const Transform& B)
 inline Transform linkTransform(const model::Link& link)
 {
   Eigen::Matrix3d R = rotationMatrix(link.axis, link.angle);
-  // offset along this link's local Z, expressed in the *parent* frame
   Eigen::Vector3d offsetLocal(0, 0, link.length);
-
-  auto p = R * offsetLocal;
-
+  auto            p = R * offsetLocal;
   return Transform{R, p};
 }
 
 inline Eigen::Vector3d orientationError(const Eigen::Matrix3d& R_current,
                                         const Eigen::Matrix3d& R_target)
 {
-  // Rotation that takes current -> target
-  Eigen::Matrix3d R_err = R_target * R_current.transpose();
-
+  Eigen::Matrix3d   R_err = R_target * R_current.transpose();
   Eigen::AngleAxisd aa(R_err);
-  // axis * angle: a 3D error vector
-  return aa.axis() * aa.angle();
+
+  double angle = aa.angle();
+  if (angle > M_PI)
+    angle -= 2.0 * M_PI;
+
+  if (std::abs(angle) < 1e-9)
+    return Eigen::Vector3d::Zero();
+
+  return aa.axis() * angle;
 }
 
 Transform forwardKinematics(const model::Robot& robot)
 {
-  Transform T; // identity: R = I, p = 0
-
+  Transform T;
   for (const auto& link : robot.links)
   {
     Transform Ti = linkTransform(link);
     T = T * Ti;
   }
-
-  return T; // end-effector in base frame
+  return T;
 }
 
 std::vector<Transform> forwardKinematicsAll(const model::Robot& robot)
@@ -79,8 +62,8 @@ std::vector<Transform> forwardKinematicsAll(const model::Robot& robot)
   std::vector<Transform> transforms;
   transforms.reserve(robot.links.size() + 1);
 
-  Transform T;             // identity
-  transforms.push_back(T); // base frame
+  Transform T;
+  transforms.push_back(T);
 
   for (const auto& link : robot.links)
   {
@@ -92,153 +75,105 @@ std::vector<Transform> forwardKinematicsAll(const model::Robot& robot)
   return transforms;
 }
 
-Eigen::MatrixXd computeJacobian(const model::Robot& robot)
+// Full 6DOF Jacobian (position + orientation)
+Eigen::MatrixXd computeJacobian6DOF(const model::Robot& robot)
 {
-  auto n = robot.links.size();
-
-  Eigen::MatrixXd J(3, n);
+  size_t          n = robot.links.size();
+  Eigen::MatrixXd J(6, n);
 
   const auto Ts = forwardKinematicsAll(robot);
   const auto pe = Ts.back().p;
 
   for (size_t i = 0; i < n; ++i)
   {
-    const auto& Ti = Ts[i];
-
-    // world joint axis
+    const auto&     Ti = Ts[i];
     Eigen::Vector3d zi = Ti.R * robot.links[i].axis;
-
-    // world joint position
     Eigen::Vector3d pi = Ti.p;
 
-    // Jacobian column
-    J.col(i) = zi.cross(pe - pi);
+    // Linear velocity (position) contribution
+    J.block<3, 1>(0, i) = zi.cross(pe - pi);
+
+    // Angular velocity (orientation) contribution
+    J.block<3, 1>(3, i) = zi;
   }
 
   return J;
 }
 
-Eigen::MatrixXd computeJacobian6D(const model::Robot& robot)
+// Adaptive damping based on error magnitude
+double adaptiveLambda(double error, double baseλ = 0.01)
 {
-  const auto      n = robot.links.size();
-  Eigen::MatrixXd J(6, n);
-
-  const auto Ts = forwardKinematicsAll(robot);
-  const auto pe = Ts.back().p; // end-effector position
-
-  for (size_t i = 0; i < n; ++i)
-  {
-    const auto& Ti = Ts[i];
-
-    // joint axis in world frame
-    Eigen::Vector3d zi = Ti.R * robot.links[i].axis;
-
-    // joint origin in world frame
-    Eigen::Vector3d pi = Ti.p;
-
-    // linear part: z_i × (p_e - p_i)
-    Eigen::Vector3d linear = zi.cross(pe - pi);
-
-    // angular part: just the axis direction for a revolute joint
-    Eigen::Vector3d angular = zi;
-
-    J.block<3, 1>(0, i) = linear;
-    J.block<3, 1>(3, i) = angular;
-  }
-
-  return J;
+  // Increase damping when error is large (more stable)
+  // Decrease when error is small (faster convergence)
+  if (error > 0.1)
+    return baseλ * 10.0;
+  else if (error > 0.01)
+    return baseλ * 2.0;
+  else
+    return baseλ;
 }
 
-Eigen::VectorXd ikStep(const model::Robot& robot, const Eigen::Vector3d& target, const Eigen::Vector3d& pe,
-                       const Eigen::Vector3d& error, double lambda)
+IKResult solveIK(model::Robot& robot, const Transform& target, int iterations, double lambda)
 {
-
-  Eigen::MatrixXd J = computeJacobian(robot);
-
-  // Damped least squares
-  Eigen::MatrixXd JJt = J * J.transpose();
-  Eigen::Matrix3d lambdaI = lambda * lambda * Eigen::Matrix3d::Identity();
-
-  Eigen::VectorXd dq = J.transpose() * (JJt + lambdaI).inverse() * error;
-  return dq;
-}
-
-Eigen::VectorXd ikStep6D(const model::Robot& robot, const Transform& current, const Transform& target,
-                         double lambda)
-{
-  Eigen::MatrixXd J = computeJacobian6D(robot);
-
-  // Build 6D error vector
-  Eigen::Matrix<double, 6, 1> e;
-  e.head<3>() = target.p - current.p;                  // position error
-  e.tail<3>() = orientationError(current.R, target.R); // orientation error
-
-  // Damped least squares in 6D
-  Eigen::MatrixXd             JJt = J * J.transpose();
-  Eigen::Matrix<double, 6, 6> lambdaI = lambda * lambda * Eigen::Matrix<double, 6, 6>::Identity();
-
-  Eigen::VectorXd dq = J.transpose() * (JJt + lambdaI).inverse() * e;
-  return dq;
-}
-
-IKResult solveIK(model::Robot& robot, const Eigen::Vector3d& target, int iterations, double lambda)
-{
-  if (target.norm() > robot.totalLength)
-    return IKResult::Unreachable;
-
-  double prevError = std::numeric_limits<double>::max();
-  for (int k = 0; k < iterations; ++k)
-  {
-    auto            pe = forwardKinematics(robot).p;
-    Eigen::Vector3d error = target - pe;
-
-    if (error.norm() > prevError * 1.05)
-      return IKResult::Diverged;
-    prevError = error.norm();
-
-    Eigen::VectorXd dq = ikStep(robot, target, pe, error, lambda);
-
-    for (size_t i = 0; i < robot.links.size(); ++i)
-      robot.links[i].rotateBy(dq[i]);
-
-    if (error.norm() < 1e-4)
-      return IKResult::Success;
-  }
-
-  return IKResult::MaxIterationsExceeded;
-}
-
-IKResult solveIK6D(model::Robot& robot, const Transform& target, int iterations, double lambda)
-{
-  // quick reachability check on position only
   if (target.p.norm() > robot.totalLength)
     return IKResult::Unreachable;
 
-  double prevError = std::numeric_limits<double>::max();
+  double    prevError = std::numeric_limits<double>::max();
+  int       stagnantCount = 0;
+  const int maxStagnant = 20;
 
   for (int k = 0; k < iterations; ++k)
   {
-    Transform current = forwardKinematics(robot);
+    // Current end-effector pose
+    auto T_current = forwardKinematics(robot);
 
-    Eigen::Matrix<double, 6, 1> e;
-    e.head<3>() = target.p - current.p;
-    e.tail<3>() = orientationError(current.R, target.R);
+    // Position error
+    Eigen::Vector3d pos_error = target.p - T_current.p;
 
-    double norm = e.norm();
+    // Orientation error
+    Eigen::Vector3d rot_error = orientationError(T_current.R, target.R);
 
-    // convergence
-    if (norm < 1e-4)
+    // Combined 6D error vector
+    Eigen::VectorXd error(6);
+    error << pos_error, rot_error;
+
+    double totalError = error.norm();
+
+    // Check convergence
+    if (totalError < 1e-4)
       return IKResult::Success;
 
-    // divergence
-    if (norm > prevError * 1.05)
-      return IKResult::Diverged;
+    // Improved divergence detection: allow temporary increases
+    if (totalError > prevError * 1.2) // More lenient threshold
+    {
+      stagnantCount++;
+      if (stagnantCount > maxStagnant)
+        return IKResult::Diverged;
+    }
+    else
+    {
+      stagnantCount = 0; // Reset if making progress
+    }
 
-    prevError = norm;
+    prevError = totalError;
 
-    Eigen::VectorXd dq = ikStep6D(robot, current, target, lambda); 
+    // Adaptive damping
+    double adaptLambda = adaptiveLambda(totalError, lambda);
 
-    // apply joint updates
+    // Compute full 6DOF Jacobian
+    Eigen::MatrixXd J = computeJacobian6DOF(robot);
+
+    // Damped least squares
+    Eigen::MatrixXd JJt = J * J.transpose();
+    Eigen::MatrixXd lambdaI = adaptLambda * adaptLambda * Eigen::MatrixXd::Identity(6, 6);
+
+    Eigen::VectorXd dq = J.transpose() * (JJt + lambdaI).inverse() * error;
+
+    // Apply joint updates with step size limiting
+    double maxStep = 0.5; // radians per iteration
+    if (dq.norm() > maxStep)
+      dq = dq * (maxStep / dq.norm());
+
     for (size_t i = 0; i < robot.links.size(); ++i)
       robot.links[i].rotateBy(dq[i]);
   }
@@ -254,7 +189,6 @@ void exportForwardKinematics(const model::Robot& robot, const std::string& filen
     throw std::runtime_error("Could not open file for writing FK data");
   }
 
-  // CSV header
   file << "x,y,z,roll,pitch,yaw\n";
 
   Transform T;
@@ -262,11 +196,9 @@ void exportForwardKinematics(const model::Robot& robot, const std::string& filen
 
   for (const auto& link : robot.links)
   {
-
     Transform Ti = linkTransform(link);
     T = T * Ti;
 
-    // Write position and orientation (RPY)
     file << std::fixed << std::setprecision(6) << T.p.x() << "," << T.p.y() << "," << T.p.z();
     auto RPY = T.R.eulerAngles(0, 1, 2) * 180 / M_PI;
     file << "," << RPY[0] << "," << RPY[1] << "," << RPY[2];
@@ -276,4 +208,4 @@ void exportForwardKinematics(const model::Robot& robot, const std::string& filen
   file.close();
 }
 
-} // namespace robot
+} // namespace robot::kinematics

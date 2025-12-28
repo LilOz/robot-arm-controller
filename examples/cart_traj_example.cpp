@@ -8,61 +8,46 @@ int main()
 
   std::vector<Transform> targets;
 
-  // --- Target 0: reachable offset, no rotation ---
-  Transform T0;
-  T0.p = Eigen::Vector3d(0.35, 0.10, 0.15);
-  T0.R = Eigen::Matrix3d::Identity();
-  targets.push_back(T0);
+  {
+    // Flat circular path parameters
+    const Eigen::Vector3d center(0.30, 0.00, 0.25); // circle center
+    const double          radius = 0.15;
+    const int             N = 10; // number of waypoints
 
-  // --- Target 1: rotate about Z (yaw), moderate translation ---
-  Transform T1;
-  T1.p = Eigen::Vector3d(0.30, -0.20, 0.25);
-  T1.R = Eigen::AngleAxisd(M_PI / 4.0, // 45 deg
-                           Eigen::Vector3d::UnitZ())
-             .toRotationMatrix();
-  targets.push_back(T1);
+    // End-effector always pointing up
+    Eigen::Matrix3d R_up = Eigen::Matrix3d::Identity();
+    Eigen::Matrix3d R_down = Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitY()).toRotationMatrix();
+    // If your tool frame is not Z-up by default, adjust here:
+    // R_up = Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()).toRotationMatrix();
 
-  // --- Target 2: rotate about Y (pitch), higher Z ---
-  Transform T2;
-  T2.p = Eigen::Vector3d(0.20, 0.30, 0.35);
-  T2.R = Eigen::AngleAxisd(-M_PI / 3.0, // -60 deg
-                           Eigen::Vector3d::UnitY())
-             .toRotationMatrix();
-  targets.push_back(T2);
+    for (int i = 0; i < N; ++i)
+    {
+      double theta = 2.0 * M_PI * static_cast<double>(i) / (N - 1);
 
-  // --- Target 3: rotate about X (roll), stretched reach ---
-  Transform T3;
-  T3.p = Eigen::Vector3d(0.45, 0.00, 0.20);
-  T3.R = Eigen::AngleAxisd(M_PI / 2.0, // 90 deg
-                           Eigen::Vector3d::UnitX())
-             .toRotationMatrix();
-  targets.push_back(T3);
+      Transform T;
+      // flat circle in XY plane
+      T.p = center + Eigen::Vector3d(radius * std::cos(theta), radius * std::sin(theta), 0.0);
+      if (i > N / 2)
+        T.R = R_down;
+      else
+        T.R = R_up;
 
-  // --- Target 4: rotate about Z again, near workspace boundary ---
-  Transform T4;
-  T4.p = Eigen::Vector3d(0.15, -0.45, 0.30);
-  T4.R = Eigen::AngleAxisd(-3.0 * M_PI / 4.0, // -135 deg
-                           Eigen::Vector3d::UnitZ())
-             .toRotationMatrix();
-  targets.push_back(T4);
+      targets.push_back(T);
+    }
+  }
 
-  // --- Target 5: rotate about Y, near-singular wrist posture ---
-  Transform T5;
-  T5.p = Eigen::Vector3d(0.25, 0.00, 0.45);
-  T5.R = Eigen::AngleAxisd(M_PI / 2.0, // 90 deg
-                           Eigen::Vector3d::UnitY())
-             .toRotationMatrix();
-  targets.push_back(T5);
-
-  double duration = 5.0;
-  int    steps = 200;
+  double duration = 10.0;
+  int    steps = 500;
 
   Trajectory traj = generateCartesianSpline(targets, duration, steps);
   exportTrajectory(traj, "trajectory.csv");
 
   using namespace robot::model;
-  Robot robot;
-  robot.loadFromJson("config/models/6dof_spherical_model.json");
+  using namespace robot::kinematics;
+
+  Robot robot("config/models/6dof_spherical_model.json");
+  solveIK(robot, traj.waypoints.front().eeTransform);
+
   TrajectoryJointSpace joint_traj = generateJointSpaceTrajectory(robot, traj);
 
   exportTrajectoryJointSpace(joint_traj, "trajectory_joint_space.csv");
