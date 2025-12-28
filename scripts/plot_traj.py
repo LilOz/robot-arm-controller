@@ -209,7 +209,7 @@ if __name__ == "__main__":
         qx,
         qy,
         qz,
-        stride=1,  # tune for density
+        stride=7,  # tune for density
         axis=np.array([0, 0, 1]),  # EE Z-axis
         scale=0.05,
     )

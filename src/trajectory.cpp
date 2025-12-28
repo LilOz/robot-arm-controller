@@ -1,5 +1,6 @@
 #include "trajectory.hpp"
 #include <fstream>
+#include <iostream>
 
 namespace robot::trajectory
 {
@@ -78,6 +79,35 @@ Trajectory generateCartesianSpline(const std::vector<kinematics::Transform>& tar
   return traj;
 }
 
+TrajectoryJointSpace generateJointSpaceTrajectory(model::Robot&     robot,
+                                                  const Trajectory& cartesian_traj)
+{
+  using namespace robot::kinematics;
+
+  TrajectoryJointSpace joint_traj;
+
+  joint_traj.jointAngles.reserve(cartesian_traj.waypoints.size());
+
+  for (const auto& wp : cartesian_traj.waypoints)
+  {
+    auto result = solveIK6D(robot, wp.eeTransform, 500);
+    if (result != IKResult::Success)
+    {
+      std::cerr << "generateJointSpaceTrajectory: IK failed for waypoint at t = "
+                << wp.timestamp.count() << " ms\n" << "Error code: " << static_cast<int>(result) << "\n";
+      throw std::runtime_error("generateJointSpaceTrajectory: IK failed for a waypoint");
+    }
+    std::vector<double> angles;
+    for (const auto& link : robot.links)
+    {
+      angles.push_back(link.angle);
+    }
+    joint_traj.jointAngles.push_back({wp.timestamp, angles});
+  }
+
+  return joint_traj;
+}
+
 void exportTrajectory(const Trajectory& traj, const std::string& path)
 {
   if (traj.waypoints.empty())
@@ -103,6 +133,41 @@ void exportTrajectory(const Trajectory& traj, const std::string& path)
 
     file << t_ms << ',' << p.x() << ',' << p.y() << ',' << p.z() << ',' << q.w() << ',' << q.x()
          << ',' << q.y() << ',' << q.z() << '\n';
+  }
+}
+
+void exportTrajectoryJointSpace(const TrajectoryJointSpace& traj, const std::string& path)
+{
+  if (traj.jointAngles.empty())
+    throw std::runtime_error("exportTrajectoryJointSpaceToCsv: trajectory has no waypoints");
+
+  std::ofstream file(path);
+  if (!file.is_open())
+    throw std::runtime_error("exportTrajectoryJointSpaceToCsv: failed to open file: " + path);
+
+  // Header
+  file << "t_ms";
+  for (size_t j = 0; j < traj.jointAngles.front().jointAngles.size(); ++j)
+  {
+    file << ",joint_" << (j + 1);
+  }
+  file << '\n';
+
+  file << std::fixed << std::setprecision(9);
+
+  const auto t0 = traj.jointAngles.front().timestamp;
+
+  for (const auto& wp : traj.jointAngles)
+  {
+    const auto t_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(wp.timestamp - t0).count();
+
+    file << t_ms;
+    for (const auto& angle : wp.jointAngles)
+    {
+      file << ',' << angle;
+    }
+    file << '\n';
   }
 }
 } // namespace robot::trajectory
