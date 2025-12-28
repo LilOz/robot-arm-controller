@@ -41,6 +41,50 @@ if(NOT TARGET Eigen3::Eigen)
   endif()
 endif()
 
+# ---- ASIO (header-only, standalone) ----
+if(NOT TARGET asio::asio)
+  find_path(ASIO_INCLUDE_DIR asio.hpp QUIET)
+  
+  if(NOT ASIO_INCLUDE_DIR)
+    message(STATUS "ASIO not found system-wide, fetching from GitHub...")
+    FetchContent_Declare(
+      asio
+      GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
+      GIT_TAG asio-1-30-2
+      GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(asio)
+    set(ASIO_INCLUDE_DIR ${asio_SOURCE_DIR}/asio/include)
+  endif()
+  
+  # Create interface library for ASIO
+  add_library(asio_interface INTERFACE)
+  target_include_directories(asio_interface INTERFACE ${ASIO_INCLUDE_DIR})
+  
+  # ASIO compile definitions
+  target_compile_definitions(asio_interface INTERFACE
+    ASIO_STANDALONE
+    ASIO_NO_DEPRECATED
+  )
+  
+  # Platform-specific definitions
+  if(WIN32)
+    target_compile_definitions(asio_interface INTERFACE
+      _WIN32_WINNT=0x0601  # Windows 7 or later
+    )
+    target_link_libraries(asio_interface INTERFACE ws2_32 wsock32)
+  else()
+    # Linux/Mac need pthread
+    find_package(Threads REQUIRED)
+    target_link_libraries(asio_interface INTERFACE Threads::Threads)
+  endif()
+  
+  # Create alias for consistent naming
+  add_library(asio::asio ALIAS asio_interface)
+  
+  message(STATUS "ASIO configured: ${ASIO_INCLUDE_DIR}")
+endif()
+
 # --------------------------
 # Core library
 # --------------------------
@@ -59,6 +103,7 @@ target_link_libraries(robot_core
   PUBLIC
     nlohmann_json::nlohmann_json
     Eigen3::Eigen
+    asio::asio
 )
 
 # --------------------------
