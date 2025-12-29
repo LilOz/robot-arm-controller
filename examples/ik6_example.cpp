@@ -11,7 +11,6 @@ int main()
 
   std::vector<Transform> poses;
 
-  // 1) Nominal pose
   {
     Transform T;
     T.p = {0.4, 0.1, 0.3};
@@ -19,7 +18,6 @@ int main()
     poses.push_back(T);
   }
 
-  // 2) Same position, different roll
   {
     Transform T;
     T.p = {0.4, 0.1, 0.3};
@@ -27,7 +25,6 @@ int main()
     poses.push_back(T);
   }
 
-  // 3) Different position, mixed orientation
   {
     Transform T;
     T.p = {0.3, -0.25, 0.45};
@@ -36,7 +33,6 @@ int main()
     poses.push_back(T);
   }
 
-  // 4) Wrist near singularity (Z aligned)
   {
     Transform T;
     T.p = {0.25, 0.0, 0.5};
@@ -44,7 +40,6 @@ int main()
     poses.push_back(T);
   }
 
-  // 5) Near reach boundary
   {
     Transform T;
     T.p = {0.55, 0.0, 0.15}; // adjust if this is unreachable
@@ -52,11 +47,10 @@ int main()
     poses.push_back(T);
   }
 
-  // 6) faceing down
   {
     Transform T;
-    T.p = {0.3, 0.2, 0.4};
-    T.R = Eigen::AngleAxisd(-M_PI / 2, Eigen::Vector3d::UnitX()).toRotationMatrix();
+    T.p = {0, 0, 0.4};
+    T.R = Eigen::AngleAxisd(M_PI / 2, Eigen::Vector3d::UnitY()).toRotationMatrix();
     poses.push_back(T);
   }
 

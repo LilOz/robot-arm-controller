@@ -87,7 +87,7 @@ bool Robot::loadFromJson(const std::string& filename)
       limits_rad = {-M_PI, M_PI};
     }
 
-    links.back().rotation_limits = {limits_rad[0], limits_rad[1]};
+    links.back().rotationLimits = {limits_rad[0], limits_rad[1]};
   }
 
   std::cout << "Loaded robot model: " << name << " with " << links.size() << " links.\n";

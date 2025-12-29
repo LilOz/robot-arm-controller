@@ -121,6 +121,7 @@ IKResult solveIK(model::Robot& robot, const Transform& target, int iterations, d
   double    prevError = std::numeric_limits<double>::max();
   int       stagnantCount = 0;
   const int maxStagnant = 20;
+  auto      prevAngles = robot.getLinkAngles();
 
   for (int k = 0; k < iterations; ++k)
   {
@@ -148,7 +149,10 @@ IKResult solveIK(model::Robot& robot, const Transform& target, int iterations, d
     {
       stagnantCount++;
       if (stagnantCount > maxStagnant)
+      {
+        robot.setLinkAngles(prevAngles); // revert to last good angles
         return IKResult::Diverged;
+      }
     }
     else
     {
@@ -178,6 +182,7 @@ IKResult solveIK(model::Robot& robot, const Transform& target, int iterations, d
       robot.links[i].rotateBy(dq[i]);
   }
 
+  robot.setLinkAngles(prevAngles); // revert to last good angles
   return IKResult::MaxIterationsExceeded;
 }
 

@@ -152,15 +152,13 @@ void RobotControlSession::handleCommand(const std::string& command)
   }
   else if (cmd_type == "RESET")
   {
-    for (auto& link : robot_.links)
-      link.angle = 0.0;
+    robot_.resetLinkAngles();
 
     std::cout << "Robot reset to home position" << std::endl;
   }
   else if (cmd_type == "GET_STATE")
   {
     // State will be sent in response
-    std::cout << "State requested" << std::endl;
   }
   else
   {
@@ -334,8 +332,7 @@ void RobotControlServer::reset()
 {
   std::lock_guard<std::mutex> lock(robot_mutex_);
 
-  for (auto& link : robot_.links)
-    link.angle = 0;
+  robot_.resetLinkAngles();
 }
 
 } // namespace robot::control
