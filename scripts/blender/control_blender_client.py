@@ -7,8 +7,6 @@ import colorsys
 import json
 import math
 import socket
-import threading
-import time
 
 import bpy
 from mathutils import Euler, Matrix, Vector
@@ -28,7 +26,7 @@ AXIS_INDEX = {
 }
 
 # =============================================================================
-# Robot Model Builder 
+# Robot Model Builder
 # =============================================================================
 
 
@@ -291,16 +289,43 @@ class RobotVisualizer:
         self.create_trajectory_curve()
 
     def create_end_effector_marker(self):
-        """Create red sphere for end-effector position"""
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.03)
-        self.end_effector = bpy.context.object
-        self.end_effector.name = "EndEffector_Marker"
 
-        # Red material
-        mat = bpy.data.materials.new(name="EndEffector_Mat")
-        mat.use_nodes = True
-        mat.node_tree.nodes["Principled BSDF"].inputs[0].default_value = (1, 0, 0, 1)
-        self.end_effector.data.materials.append(mat)
+        # Parent empty
+        bpy.ops.object.empty_add(type="PLAIN_AXES", location=(0, 0, 0))
+        self.end_effector = bpy.context.object
+        self.end_effector.name = "EndEffector_Axes"
+        self.end_effector.empty_display_size = 0.05
+
+        axis_len = 0.08
+        radius = 0.006
+
+        axes = [
+            ("X", (1, 0, 0, 1), (0, math.pi / 2, 0), (axis_len / 2, 0, 0)),
+            ("Y", (0, 1, 0, 1), (-math.pi / 2, 0, 0), (0, axis_len / 2, 0)),
+            ("Z", (0, 0, 1, 1), (0, 0, 0), (0, 0, axis_len / 2)),
+        ]
+
+        for name, color, rot, loc in axes:
+            bpy.ops.mesh.primitive_cylinder_add(
+                radius=radius,
+                depth=axis_len,
+                location=loc,
+                rotation=rot,
+            )
+            axis_obj = bpy.context.object
+            axis_obj.name = f"EE_{name}"
+            axis_obj.parent = self.end_effector
+
+            mat = bpy.data.materials.new(name=f"EE_{name}_Mat")
+            mat.use_nodes = True
+            mat.node_tree.nodes["Principled BSDF"].inputs[
+                "Base Color"
+            ].default_value = color
+            mat.node_tree.nodes["Principled BSDF"].inputs[
+                "Roughness"
+            ].default_value = 0.3
+
+            axis_obj.data.materials.append(mat)
 
     def create_trajectory_curve(self):
         """Create curve for trajectory visualization"""
@@ -336,8 +361,9 @@ class RobotVisualizer:
                 # Set rotation
                 joint_obj.rotation_euler[axis_idx] = angle
 
-        # Update end-effector marker
+        # Update end-effector marker pose
         self.end_effector.location = state["position"]
+        self.end_effector.rotation_euler = state["rotation"]
 
         # Add to trajectory
         self.trajectory_points.append(state["position"].copy())
